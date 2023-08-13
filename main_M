@@ -1,0 +1,298 @@
+// Autor: Deyler Ruiz
+// 20912
+// postlab 4
+// Pic Maestro
+
+// se usaron las librerias realizadas en clase de teoria
+
+
+//librerias 
+#include <xc.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "I2C.h"
+#include "LCD.h"
+
+
+// config1
+#pragma config FOSC = INTRC_NOCLKOUT// Oscillator Selection bits (RC oscillator: CLKOUT function on RA6/OSC2/CLKOUT pin, RC on RA7/OSC1/CLKIN)
+#pragma config WDTE = OFF           // Watchdog Timer Enable bit (WDT disabled and can be enabled by SWDTEN bit of the WDTCON register)
+#pragma config PWRTE = OFF          // Power-up Timer Enable bit (PWRT disabled)
+#pragma config MCLRE = OFF          // RE3/MCLR pin function select bit (RE3/MCLR pin function is digital input, MCLR internally tied to VDD)
+#pragma config CP = OFF             // Code Protection bit (Program memory code protection is disabled)
+#pragma config CPD = OFF            // Data Code Protection bit (Data memory code protection is disabled)
+#pragma config BOREN = OFF          // Brown Out Reset Selection bits (BOR disabled)
+#pragma config IESO = OFF           // Internal External Switchover bit (Internal/External Switchover mode is disabled)
+#pragma config FCMEN = OFF          // Fail-Safe Clock Monitor Enabled bit (Fail-Safe Clock Monitor is disabled)
+#pragma config LVP = OFF            // Low Voltage Programming Enable bit (RB3 pin has digital I/O, HV on MCLR must be used for programming)
+
+// CONFIG2
+#pragma config BOR4V = BOR40V       // Brown-out Reset Selection bit (Brown-out Reset set to 4.0V)
+#pragma config WRT = OFF            // Flash Program Memory Self Write Enable bits (Write protection off)
+
+// frecuencia del oscilador 
+#define _XTAL_FREQ 8000000
+
+//variables de la libreria del LCD
+#define RS RE0
+#define EN RE1
+#define D4 RD4
+#define D5 RD5
+#define D6 RD6
+#define D7 RD7
+
+// variables globales 
+#define dir_segundo 0x00
+#define dir_minuto 0x01
+#define dir_hora 0x02
+#define dir_mes 0x05
+#define dir_anio 0x06
+#define dir_fecha 0x04
+
+char lectura_potenciometro[10];
+char segundo_cadena[3];
+char minuto_cadena[3];
+char hora_cadena[3];
+char dia_cadena[3];
+char mes_cadena[3];
+char anio_cadena[3];
+
+uint8_t valor_dia = 0x01;
+uint8_t valor_mes = 0x01;
+uint8_t valor_anio = 0x20;
+uint8_t valor_hora = 0x01;
+uint8_t valor_segundo = 0x00;
+uint8_t valor_minutos = 0x00;
+
+uint8_t valor_h;
+uint8_t valor_m;
+uint8_t valor_s;
+uint8_t valor_d;
+uint8_t valor_me;
+uint8_t valor_a;
+
+
+//prototipos 
+void setup(void);
+
+uint8_t convert(uint8_t dat) {
+    return ((dat >> 4) * 10) + (dat & 0x0F);
+}
+
+
+//funcion principal
+void main(void)
+{
+    setup();
+    Lcd_Init();
+    
+    //loop
+    while(1)
+    {
+        
+        I2C_Master_Start();
+        I2C_Master_Write(0x51);
+        PORTB = I2C_Master_Read(0);
+        int pot_s1 = PORTB;
+        I2C_Master_Stop();
+        __delay_ms(200);
+        
+        // Segundos
+        I2C_Master_Start();         
+        I2C_Master_Write(0xD0);      
+        I2C_Master_Write(dir_segundo);     
+        I2C_Master_RepeatedStart();  
+        I2C_Master_Write(0xD1);      
+        valor_s = I2C_Master_Read(0);
+        I2C_Master_Stop();
+        __delay_ms(200);
+        
+        
+        // Minutos
+        I2C_Master_Start();         
+        I2C_Master_Write(0xD0);      
+        I2C_Master_Write(dir_minuto);      
+        I2C_Master_RepeatedStart();  
+        I2C_Master_Write(0xD1);      
+        valor_m = I2C_Master_Read(0);
+        I2C_Master_Stop();
+        
+        
+        // Horas
+        I2C_Master_Start();         
+        I2C_Master_Write(0xD0);      
+        I2C_Master_Write(dir_hora);      
+        I2C_Master_Write(valor_hora);      
+        I2C_Master_RepeatedStart();  
+        I2C_Master_Write(0xD1);      
+        valor_h = I2C_Master_Read(0);
+        I2C_Master_Stop();
+        
+        // Dias
+        I2C_Master_Start();          
+        I2C_Master_Write(0xD0);      
+        I2C_Master_Write(dir_fecha);      
+        I2C_Master_Write(valor_dia);     
+        I2C_Master_RepeatedStart();  
+        I2C_Master_Write(0xD1);      
+        valor_d = I2C_Master_Read(0);
+        I2C_Master_Stop();
+        
+        // Meses
+        I2C_Master_Start();          
+        I2C_Master_Write(0xD0);     
+        I2C_Master_Write(dir_mes);     
+        I2C_Master_Write(valor_mes);      
+        I2C_Master_RepeatedStart();  
+        I2C_Master_Write(0xD1);      
+        valor_me = I2C_Master_Read(0);
+        I2C_Master_Stop();
+        
+        // Años
+        I2C_Master_Start();         
+        I2C_Master_Write(0xD0);      
+        I2C_Master_Write(dir_anio);      
+        I2C_Master_Write(valor_anio);        
+        I2C_Master_RepeatedStart();  
+        I2C_Master_Write(0xD1);     
+        valor_a = I2C_Master_Read(0);
+        I2C_Master_Stop();
+        
+        
+        // cambio de fecha
+        if (RA0 == 1)
+        {
+            valor_dia++;
+            if (valor_dia > 31)
+            {
+                valor_dia = 1;
+            }
+            
+            I2C_Master_Start();
+            uint8_t dia_decimal = convert(valor_dia); 
+            I2C_Master_Write(0xD0);
+            I2C_Master_Write(dir_fecha);
+            I2C_Master_Write(dia_decimal);
+            I2C_Master_RepeatedStart();  
+            I2C_Master_Write(0xD1);      
+            valor_anio = I2C_Master_Read(0);
+            I2C_Master_Stop();
+            __delay_ms(200);
+        }
+        
+        if (RA1 == 1)
+        {
+            valor_mes++;
+            if (valor_mes > 12)
+            {
+                valor_mes = 1;
+            }
+            
+            I2C_Master_Start();
+            uint8_t mes_decimal = convert(valor_mes); 
+            I2C_Master_Write(0xD0);
+            I2C_Master_Write(dir_mes);
+            I2C_Master_Write(mes_decimal);
+            I2C_Master_Stop();
+            __delay_ms(200);
+        }
+        
+        if (RA2 == 1)
+        {
+            valor_anio++;
+            if (valor_anio > 99)
+            {
+                valor_anio = 0;
+            }
+            
+            I2C_Master_Start();
+            uint8_t decade = (valor_anio >> 4);
+            uint8_t year_of_decade = (valor_anio & 0x0F);
+            uint8_t anio_decimal = (decade * 10) + year_of_decade; 
+            I2C_Master_Write(0xD0);
+            I2C_Master_Write(dir_anio);
+            I2C_Master_Write(anio_decimal);
+            I2C_Master_Stop();
+            __delay_ms(200);
+        }
+        
+        if (RA3 == 1)
+        {
+            valor_hora++;
+            if (valor_hora > 24)
+            {
+                valor_hora = 0;
+            }
+            __delay_ms(200);
+        }
+        
+        //lcd
+        uint8_t dia_resultado = convert(valor_d); // Conversión de días a decimal
+        uint8_t mes_resultado = convert(valor_me); // Conversión de meses a decimal
+        uint8_t dec = (valor_a >> 4); // Obtener década del año
+        uint8_t decy = (valor_a & 0x0F); // Obtener año dentro de la década
+        uint8_t anio_resultado = (dec * 10) + decy; // Conversión de año a decimal
+        uint8_t hora_resultado = convert(valor_h); // Conversión de hora a decimal
+        uint8_t min_resultado = convert(valor_m); // Conversión de minutos a decimal
+        uint8_t seg_resultado = convert(valor_s); // Conversión de segundos a decimal
+
+
+       
+       // Mostrar valores en la pantalla LCD
+        Lcd_Clear(); // Limpiar LCD
+        Lcd_Set_Cursor(1,1); // Posicionar cursor en línea 1, columna 1
+        Lcd_Write_String("Grados:"); // Escribe "la temperatura:"
+        Lcd_Set_Cursor(1,5); // Posicionar cursor en línea 1, columna 5
+        sprintf(lectura_potenciometro, "%d\r", pot_s1); // Convertir pot_s1 a cadena
+        Lcd_Write_String(lectura_potenciometro); // Mostrar valor del potenciómetro
+        Lcd_Set_Cursor(2,1); // Posicionar cursor en línea 2, columna 1
+        Lcd_Write_String("fecha:"); // Escribie la fecha
+        Lcd_Set_Cursor(2,7); // Posicionar cursor en línea 2, columna 7
+        sprintf(dia_cadena, "%d", valor_d); // Convertir valor_d a cadena
+        Lcd_Write_String(dia_cadena); // Mostrar día
+        Lcd_Set_Cursor(2,9); // Posicionar cursor en línea 2, columna 9
+        sprintf(mes_cadena, "/%d", valor_mes); // Convertir valor_mes a cadena
+        Lcd_Write_String(mes_cadena); // Mostrar mes
+        Lcd_Set_Cursor(2,12); // Posicionar cursor en línea 2, columna 12
+        sprintf(anio_cadena, "/%d", valor_anio); // Convertir valor_anio a cadena
+        Lcd_Write_String(anio_cadena); // Mostrar año
+
+        // Mostrar la hora en la LCD
+        Lcd_Set_Cursor(1,9);
+        Lcd_Write_String("ti:");              
+        Lcd_Set_Cursor(1,11);
+        sprintf(hora_cadena, "%d:", valor_hora);
+        Lcd_Write_String(hora_cadena);
+        // Mostrar minutos
+        Lcd_Set_Cursor(1,13);
+        sprintf(minuto_cadena, "%d:", valor_minutos);
+        Lcd_Write_String(minuto_cadena);
+        // Mostrar segundos
+        Lcd_Set_Cursor(1,15);
+        sprintf(segundo_cadena, "%d", valor_segundo);
+        Lcd_Write_String(segundo_cadena);
+        
+        __delay_ms(200);
+    }
+    return;
+}
+
+//config io 
+void setup(void) {
+    
+    ANSEL = 0;
+    ANSELH = 0;
+    TRISA = 0;
+    TRISB = 0;
+    TRISD = 0;
+    TRISE = 0b1100;
+    PORTA = 0;
+    PORTB = 0;
+    PORTD = 0;
+    PORTE = 0;
+    
+    
+    OSCCONbits.IRCF = 0b111; 
+    OSCCONbits.SCS = 1;
+    I2C_Master_Init(100000);  
+}
