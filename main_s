@@ -1,0 +1,109 @@
+// Autor: Deyler Ruiz
+// 20912
+// postlab 4
+// Pic esclavo
+// se usaron las librerias realizadas en clase de teoria
+
+
+//librerias 
+#include <xc.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "ADC.h"
+#include "I2C.h"
+
+// Configuración de bits
+#pragma config FOSC = INTRC_NOCLKOUT
+#pragma config WDTE = OFF
+#pragma config PWRTE = OFF
+#pragma config MCLRE = OFF
+#pragma config CP = OFF
+#pragma config CPD = OFF
+#pragma config BOREN = OFF
+#pragma config IESO = OFF
+#pragma config FCMEN = OFF
+#pragma config LVP = OFF
+#pragma config BOR4V = BOR40V
+#pragma config WRT = OFF
+
+#define _XTAL_FREQ 8000000
+
+
+uint8_t esc;
+
+void setup(void);
+void __interrupt() isr(void);
+
+void main(void) {
+    setup();
+    while (1) {
+        // Comprobar si la conversión ADC ha terminado
+        if (ADCON0bits.GO == 0) {
+            __delay_ms(10);
+            ADCON0bits.GO = 1; // Iniciar una nueva conversión ADC
+        }
+        __delay_ms(250); // Retardo antes de la siguiente iteración
+    }
+    return;
+}
+
+// Inicializar diversas configuraciones
+void setup(void) {
+    // Configurar pines analógicos y digitales
+    ANSEL = 0b00000011;
+    ANSELH = 0;
+    TRISB = 0;
+    PORTB = 0;
+    
+    // Inicializar el módulo ADC
+    initializeADC(1);
+    
+    // Configurar ajustes del oscilador
+    OSCCONbits.IRCF = 0b111; // Seleccionar frecuencia del oscilador interno
+    OSCCONbits.SCS = 1; // Oscilador interno
+    
+    // Inicializar el módulo I2C como esclavo
+    I2C_Slave_Init(0x50); // Inicializar con dirección de esclavo 0x50
+    return;
+}
+
+// Rutina de servicio de interrupción
+void __interrupt() isr(void) {
+    if (ADIF) {
+        changeADCChannel(1); // Cambiar al siguiente canal ADC
+        PORTA = getCurrentADCChannel(); // Mostrar el canal ADC actual en PORTA
+        PORTB = readADC(); // Mostrar el valor ADC en PORTB
+        ADIF = 0; // Limpiar la bandera de interrupción ADC
+        return;
+    }
+    
+    if (PIR1bits.SSPIF == 1) {
+        SSPCONbits.CKP = 0;
+        if ((SSPCONbits.SSPOV) || (SSPCONbits.WCOL)) {
+            esc = SSPBUF; // Limpiar el búfer
+            SSPCONbits.SSPOV = 0; // Limpiar la bandera de desbordamiento
+            SSPCONbits.WCOL = 0; // Limpiar la bandera de colisión
+            SSPCONbits.CKP = 1; // Liberar el reloj
+        }
+        
+        if (!SSPSTATbits.D_nA && !SSPSTATbits.R_nW) {
+            esc = SSPBUF; // Limpiar el búfer
+            PIR1bits.SSPIF = 0; // Limpiar la bandera de interrupción I2C
+            SSPCONbits.CKP = 1; // Liberar el reloj
+            while (!SSPSTATbits.BF); // Esperar hasta que el búfer esté lleno
+            PORTD = SSPBUF; // Mostrar los datos recibidos en PORTD
+            __delay_us(250);
+        }
+        
+        else if (!SSPSTATbits.D_nA && SSPSTATbits.R_nW) {
+            esc = SSPBUF; // Limpiar el búfer
+            BF = 0; // Limpiar la bandera de búfer lleno
+            SSPBUF = PORTB; // Cargar el búfer con los datos de PORTB
+            SSPCONbits.CKP = 1; // Liberar el reloj
+            __delay_us(250);
+            while (SSPSTATbits.BF); // Esperar hasta que el búfer esté vacío
+        }
+        
+        PIR1bits.SSPIF = 0; // Limpiar la bandera de interrupción I2C
+    }
+}
